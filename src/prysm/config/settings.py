@@ -49,10 +49,17 @@ class VADSettings(BaseSettings):
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    # LLM
+    # LLM (API Harness - Secondary)
     llm_api_key: str = Field(default="", alias="LLM_API_KEY")
     llm_model: str = Field(default="gpt-4o", alias="LLM_MODEL")
     llm_base_url: str = Field(default="https://api.openai.com/v1", alias="LLM_BASE_URL")
+
+    # Local Models (Ollama) & Routing
+    llm_mode: str = Field(default="local", alias="LLM_MODE")  # "local" or "api"
+    ollama_base_url: str = Field(default="http://localhost:11434/v1", alias="OLLAMA_BASE_URL")
+    local_primary_model: str = Field(default="qwen2.5-coder:14b", alias="LOCAL_PRIMARY_MODEL")
+    local_thinking_model: str = Field(default="qwen3.5:9b", alias="LOCAL_THINKING_MODEL")
+    ollama_models_path: str = Field(default=r"X:\OllamaModels", alias="OLLAMA_MODELS")
 
     # ElevenLabs
     elevenlabs_api_key: str = Field(default="", alias="ELEVENLABS_API_KEY")

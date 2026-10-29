@@ -1,6 +1,7 @@
 import json
 import logging
 import re
+import time
 from typing import Any
 
 from openai import AsyncOpenAI
@@ -16,14 +17,22 @@ logger = logging.getLogger(__name__)
 _TOOL_CALL_XML_RE = re.compile(r"<tool_call>.*?</tool_call>", re.DOTALL)
 # Also catch unclosed/partial tool call tags
 _TOOL_CALL_TAG_RE = re.compile(r"</?tool_call>|</?function[^>]*>|</?parameter[^>]*>", re.DOTALL)
+# Matches thinking tags from reasoning models
+_THINK_TAG_RE = re.compile(r"<think>.*?</think>", re.DOTALL)
 
 
 def _clean_response_text(text: str | None) -> str | None:
-    """Strip any leaked XML tool call markup from the response text."""
+    """Strip XML tool call markup and thinking tags from the response text."""
     if not text:
         return text
     cleaned = _TOOL_CALL_XML_RE.sub("", text)
     cleaned = _TOOL_CALL_TAG_RE.sub("", cleaned)
+    if "<think>" in cleaned and "</think>" in cleaned:
+        outside = _THINK_TAG_RE.sub("", cleaned).strip()
+        if outside:
+            cleaned = outside
+        else:
+            cleaned = re.sub(r"</?think>", "", cleaned).strip()
     cleaned = cleaned.strip()
     return cleaned or None
 
@@ -123,8 +132,45 @@ class OpenAILLMProvider(LLMProvider):
                         )
                     )
 
+            content = message.content
+
+            # Some local models emit tool calls directly as JSON in the message content
+            if tools and not tool_calls and content:
+                raw = content.strip()
+                if raw.startswith("```"):
+                    raw = re.sub(r"^```(?:json)?\s*", "", raw)
+                    raw = re.sub(r"\s*```$", "", raw).strip()
+                if raw.startswith("{") and raw.endswith("}"):
+                    try:
+                        parsed = json.loads(raw)
+                        name = parsed.get("name") or parsed.get("function") or parsed.get("tool")
+                        args = parsed.get("arguments") or parsed.get("parameters") or {}
+                        if isinstance(args, str):
+                            try:
+                                args = json.loads(args)
+                            except Exception:
+                                args = {}
+                        valid_tool_names = {
+                            t.get("function", {}).get("name", t.get("name")) for t in tools
+                        }
+                        if name in valid_tool_names:
+                            tool_calls.append(
+                                LLMToolCall(
+                                    call_id=f"call_{int(time.time() * 1000)}",
+                                    tool_name=name,
+                                    arguments=args if isinstance(args, dict) else {},
+                                )
+                            )
+                            content = None
+                    except Exception:
+                        pass
+
+            # Fall back to reasoning if content is empty and not a tool call
+            if not content and not tool_calls and hasattr(message, "reasoning") and message.reasoning:
+                content = message.reasoning
+
             return BrainResponse(
-                text=_clean_response_text(message.content),
+                text=_clean_response_text(content),
                 tool_calls=tool_calls,
                 finish_reason=choice.finish_reason or "stop",
             )

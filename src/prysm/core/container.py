@@ -2,7 +2,7 @@ from prysm.audio.pipeline import VoicePipeline
 import logging
 
 from prysm.brain.context import ContextManager
-from prysm.brain.providers.openai_provider import OpenAILLMProvider
+from prysm.brain.router import RouterLLMProvider
 from prysm.config.settings import Settings
 from prysm.core.assistant import PrysmAssistant
 from prysm.core.events import EventBus
@@ -65,11 +65,11 @@ class ApplicationContainer:
             session=self.user_session,
         )
         self.tool_executor = ToolExecutor(self.tool_registry, session=self.user_session)
-        self.llm_provider = OpenAILLMProvider(
-            api_key=self.settings.llm_api_key,
-            model=self.settings.llm_model,
-            base_url=self.settings.llm_base_url,
-        )
+        self.llm_provider = RouterLLMProvider(self.settings)
+
+        # Register model routing tools
+        from prysm.tools.model_tools import ModelRoutingTools
+        ModelRoutingTools(self.llm_provider).register(self.tool_registry)
 
         # Assistant
         self.assistant = PrysmAssistant(
@@ -84,7 +84,7 @@ class ApplicationContainer:
         self.voice_pipeline = None
 
         logger.info(
-            f"Container ready | LLM: {self.settings.llm_model} | "
+            f"Container ready | {self.llm_provider.get_status_description()} | "
             f"Tools: {len(self.tool_registry.list_tools())}"
         )
 

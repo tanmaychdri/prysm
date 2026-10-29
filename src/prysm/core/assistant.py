@@ -238,6 +238,40 @@ class PrysmAssistant:
                     response = BrainResponse(text="Standing by.", tool_calls=[])
                 elif any(w in clean_text for w in ["prism", "wake up"]) and iteration == 1:
                     response = BrainResponse(text="I am back online sir.", tool_calls=[])
+                elif (
+                    re.search(r"\b(?:use|switch\s+to)\s+api(?:\s+models?)?\b|\buse\s+cloud(?:\s+models?)?\b", clean_text)
+                    and iteration == 1
+                ):
+                    if hasattr(self.llm_provider, "set_mode"):
+                        self.llm_provider.set_mode("api")
+                    desc = (
+                        self.llm_provider.get_status_description()
+                        if hasattr(self.llm_provider, "get_status_description")
+                        else "API models"
+                    )
+                    response = BrainResponse(text=f"Switched to {desc}.", tool_calls=[])
+                elif (
+                    re.search(r"\b(?:use|switch\s+to)\s+local(?:\s+models?)?\b|\buse\s+ollama\b|\buse\s+offline(?:\s+models?)?\b", clean_text)
+                    and iteration == 1
+                ):
+                    if hasattr(self.llm_provider, "set_mode"):
+                        self.llm_provider.set_mode("local")
+                    desc = (
+                        self.llm_provider.get_status_description()
+                        if hasattr(self.llm_provider, "get_status_description")
+                        else "local models"
+                    )
+                    response = BrainResponse(text=f"Switched to {desc}.", tool_calls=[])
+                elif (
+                    clean_text in ["model status", "which model are you using", "what model are you using", "active model"]
+                    and iteration == 1
+                ):
+                    desc = (
+                        self.llm_provider.get_status_description()
+                        if hasattr(self.llm_provider, "get_status_description")
+                        else "Standard LLM Provider"
+                    )
+                    response = BrainResponse(text=f"Currently running: {desc}.", tool_calls=[])
                 else:
                     response = await self.llm_provider.generate_response(
                         messages, tools or None
